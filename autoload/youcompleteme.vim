@@ -31,6 +31,8 @@ let s:cursor_moved = 0
 let s:moved_vertically_in_insert_mode = 0
 let s:previous_num_chars_on_current_line = -1
 
+let s:plugin_root = expand('<sfile>:h:h')
+
 function! youcompleteme#Enable()
   " When vim is in diff mode, don't run
   if &diff
@@ -518,6 +520,70 @@ function! s:ShowDiagnostics()
 endfunction
 
 command! YcmDiags call s:ShowDiagnostics()
+
+function! s:System(s)
+  echo "running ".a:s
+  let s = system('{ '.a:s.'; } 2>&1')
+  if v:shell_error != 0
+    throw "failed running system command ".a:s." output :".s
+  endif
+  return s
+endfunction
+
+let s:compile_check = get(s:, 'complete_checkm', 0)
+
+" let additional_cmake_flags something like this: = -DPYTHON_LIBRARIES:PATH=/var/run/current-system/sw/lib/libpython2.7 -DPYTHON_INCLUDE_DIR:PATH=/var/run/current-system/sw/include"
+function! youcompleteme#Setup(additional_cmake_flags)
+  " 1) is compilation necessary
+  " 2) check prerequisites
+  " 3) build in a subdir
+
+  " only do once per session
+  " (should this be written in python?)
+  if s:compile_check == 1 | return | endif
+
+  if (executable('/bin/sh') && filereadable(s:root.'/.git/HEAD'))
+    " has('python') and patch584 is checked by plugin/youcompleteme.vim
+    if !executable('cmake') | throw "requires cmake executable" | endif
+    if !executable('make') | throw "requires make executable" | endif
+
+    let file_cr = s:plugin_root.'/.compiled_ref'
+
+    " put builddir into plugin_root so that user can clean up on removal
+    " easily
+    let build_dir = s:plugin_root.'/build'
+
+    " only linux like environment supported by now
+    let target_ref = system('git --git-dir=$p/.git rev-parse HEAD')
+
+    if filereadable(file_cr)
+      let compiled_ref = readfile(file_cr)[0]
+    else
+      let compiled_ref = "0"
+    endif
+
+    if compiled_ref != target_ref
+      " requires recompilation
+
+      echom "recompiling  youcompleteme"
+      echom "cleaning build dir ".build_dir
+      call s:System("b=".build_dir."; rm -fr $b; mkdir -p $b")
+      let b = "cd ".build_dir.";"
+
+      echom "skipping step 3"
+
+      echom "step 4"
+      " step 4 (adjust if you require support for c like languages)
+      call s:System(b.' cmake -G "Unix Makefiles" . '.s:plugin_root.'/cpp '.a:additional_cmake_flags)
+
+      echom "skipping step 5"
+
+      call s:System('make')
+    endif
+  else
+    echom "sorry, no implementation to setup youcompleteme automatically"
+  endif
+endfunction
 
 
 " This is basic vim plugin boilerplate
